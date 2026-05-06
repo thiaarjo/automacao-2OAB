@@ -21,7 +21,7 @@ FLUXOS_AUTOMACAO = [
     {"nome": "Direito Tributário", "texto_link": "Direito Tributário - 2ª Fase OAB"}
 ]
 
-# Textos indesejados que devem ser filtrados
+# Textos indesejados que devem ser filtrados do enunciado e gabarito
 TEXTOS_LIXO = [
     "O(A) examinando(a) deve fundamentar suas respostas",
     "A mera citação do dispositivo legal",
@@ -75,6 +75,7 @@ def menu_fila(lista_opcoes, titulo_menu, chave_exibicao):
     """
     Exibe o menu e permite selecionar MÚLTIPLAS questões de uma vez.
     Ex: 2,3,4,7 ou 1-5 ou 2,4,6-10
+    Retorna uma lista de itens selecionados.
     """
     print(f"\n{'='*70}")
     print(f"  {titulo_menu}")
@@ -101,6 +102,7 @@ def menu_fila(lista_opcoes, titulo_menu, chave_exibicao):
         if entrada == "todas":
             return lista_opcoes
         
+        # Processar a entrada (aceita: 2,3,4 ou 1-5 ou 2,4,6-10)
         indices = set()
         try:
             partes = entrada.split(",")
@@ -113,6 +115,7 @@ def menu_fila(lista_opcoes, titulo_menu, chave_exibicao):
                 else:
                     indices.add(int(parte))
             
+            # Validar se todos os índices são válidos
             selecionados = []
             for idx in sorted(indices):
                 if 1 <= idx <= len(lista_opcoes):
@@ -166,13 +169,15 @@ def extrair_exames(driver):
     """
     return driver.execute_script(script)
 
-def extrair_conteudo_questao(driver):
+def extrair_conteudo_discursiva(driver):
     """
-    Injeta JavaScript para separar inteligentemente o Enunciado do Gabarito.
-    Para o Enunciado quando encontra 'Resposta FGV'.
-    Começa o Gabarito quando encontra 'Padrão de Resposta'.
-    Filtra textos genéricos indesejados.
+    Extrai o conteúdo da questão discursiva separando:
+    - Enunciado: tudo (incluindo perguntas A e B) até 'Resposta FGV'
+    - Resposta A: texto após 'A)' no Padrão de Resposta
+    - Resposta B: texto após 'B)' no Padrão de Resposta
+    Filtra textos genéricos indesejados (Obs., coincidência, etc.)
     """
+    # Passa os textos lixo como parâmetro para o JS
     textos_lixo_js = TEXTOS_LIXO
     
     script = """
@@ -180,7 +185,7 @@ def extrair_conteudo_questao(driver):
         const contentDiv = document.querySelector("#conteudo_total");
         if (!contentDiv) return {erro: "Conteúdo não encontrado"};
         
-        let fase = "ENUNCIADO"; 
+        let fase = "ENUNCIADO";
         let enunciado_parts = [];
         let gabarito_parts = [];
         
@@ -223,7 +228,7 @@ def extrair_conteudo_questao(driver):
                 }
             }
             
-            // Espaçamento
+            // Espaçamento: tags vazias viram quebra de linha
             if (text.length === 0) {
                 if (tagName === 'BR' || tagName === 'P' || tagName === 'DIV') {
                     if (fase === "ENUNCIADO") enunciado_parts.push("");
@@ -232,14 +237,14 @@ def extrair_conteudo_questao(driver):
                 continue;
             }
             
-            // Coleta de Conteúdo
+            // Coleta de conteúdo
             if (fase === "ENUNCIADO") {
                 if (tagName === 'P' || tagName === 'SPAN' || tagName === 'DIV') {
                     enunciado_parts.push(text);
                 }
             } else if (fase === "GABARITO") {
                 if (tagName === 'P' || tagName === 'SPAN' || tagName === 'DIV') {
-                    if (!text.includes("Para ver a resposta da FGV") &&
+                    if (!text.includes("Para ver a resposta da FGV") && 
                         !text.includes("gabarito preliminar da prova")) {
                         gabarito_parts.push(text);
                     }
@@ -247,7 +252,7 @@ def extrair_conteudo_questao(driver):
             }
         }
         
-        // Limpeza
+        // Limpeza de linhas vazias
         function limpar(arr) {
             let txt = arr.join('\\n');
             txt = txt.replace(/^\\n+/, '');
@@ -256,9 +261,28 @@ def extrair_conteudo_questao(driver):
             return txt;
         }
         
+        // Separar gabarito em Resposta A e Resposta B
+        const gabarito_texto = limpar(gabarito_parts);
+        let resposta_a = "";
+        let resposta_b = "";
+        
+        const matchB = gabarito_texto.search(/\\nB\\)|^B\\)/m);
+        
+        if (matchB !== -1) {
+            resposta_a = gabarito_texto.substring(0, matchB).trim();
+            resposta_b = gabarito_texto.substring(matchB).trim();
+        } else {
+            resposta_a = gabarito_texto;
+        }
+        
+        // Remove prefixos A) e B)
+        resposta_a = resposta_a.replace(/^A\\)\\s*/, '').trim();
+        resposta_b = resposta_b.replace(/^B\\)\\s*/, '').trim();
+        
         return {
             enunciado: limpar(enunciado_parts),
-            gabarito: limpar(gabarito_parts)
+            resposta_a: resposta_a,
+            resposta_b: resposta_b
         };
     }
     return extrair(arguments[0]);
@@ -275,7 +299,7 @@ def iniciar_robo():
     limpar_terminal()
     
     # --- PASSO 1: Escolha da Área ---
-    area_escolhida = menu_selecao(FLUXOS_AUTOMACAO, "ROBÔ OAB [PEÇAS] - SELECIONE A ÁREA DO DIREITO", "nome")
+    area_escolhida = menu_selecao(FLUXOS_AUTOMACAO, "ROBÔ OAB [DISCURSIVAS] - SELECIONE A ÁREA DO DIREITO", "nome")
     
     print(f"\n[AGUARDE] Abrindo navegador e acessando: {area_escolhida['nome']}...")
     
@@ -285,8 +309,11 @@ def iniciar_robo():
     chrome_options.add_experimental_option("detach", True)
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    driver.set_page_load_timeout(30)  # Máximo 30s para carregar uma página
+    driver.set_script_timeout(15)     # Máximo 15s para executar JavaScript
     
     try:
+        # Acessa a página principal e clica na área
         driver.get(URL_BASE)
         time.sleep(1)
         elemento_link = driver.find_element(By.PARTIAL_LINK_TEXT, area_escolhida['texto_link'])
@@ -308,18 +335,18 @@ def iniciar_robo():
         
         limpar_terminal()
         
-        # --- PASSO 3: Filtrar apenas PEÇAS e montar fila ---
+        # --- PASSO 3: Filtrar apenas DISCURSIVAS (SP) e montar fila ---
         todas_questoes = exame_escolhido["questoes"]
-        apenas_pecas = [q for q in todas_questoes if q['texto'].lower().startswith('peça')]
+        apenas_sps = [q for q in todas_questoes if q['texto'].lower().startswith('sp')]
         
-        if not apenas_pecas:
-            print("\n[AVISO] Nenhuma peça encontrada neste exame.")
+        if not apenas_sps:
+            print("\n[AVISO] Nenhuma questão discursiva (SP) encontrada neste exame.")
             return
         
-        titulo_menu_questoes = f"PEÇAS DO {exame_escolhido['titulo']}"
-        fila_questoes = menu_fila(apenas_pecas, titulo_menu_questoes, "texto")
+        titulo_menu_questoes = f"DISCURSIVAS DO {exame_escolhido['titulo']}"
+        fila_questoes = menu_fila(apenas_sps, titulo_menu_questoes, "texto")
         
-        print(f"\n[FILA] {len(fila_questoes)} peça(s) na fila de extração.")
+        print(f"\n[FILA] {len(fila_questoes)} questão(ões) na fila de extração.")
         print(f"{'='*70}")
         
         # --- PASSO 4: Processar fila sequencialmente ---
@@ -331,37 +358,43 @@ def iniciar_robo():
             posicao = f"[{i+1}/{len(fila_questoes)}]"
             titulo_curto = questao['texto'][:50] + "..." if len(questao['texto']) > 50 else questao['texto']
             
-            # Verifica duplicatas
+            # Verifica se já existe no banco antes de acessar a página
             if database.ja_existe(questao['url']):
                 pular_count += 1
                 print(f"\n{posicao} ⏭ JÁ EXISTE: {titulo_curto}")
                 continue
             
-            print(f"\n{posicao} Acessando: {titulo_curto}")
-            driver.get(questao['url'])
-            time.sleep(3)
-            
-            print(f"{posicao} Extraindo dados...")
-            dados = extrair_conteudo_questao(driver)
-            
-            if dados and isinstance(dados, dict) and "erro" not in dados:
-                sucesso = database.salvar_peca(
-                    area=area_escolhida['nome'],
-                    exame=exame_escolhido['titulo'],
-                    titulo=questao['texto'],
-                    url=questao['url'],
-                    enunciado=dados['enunciado'],
-                    resposta=dados['gabarito']
-                )
-                if sucesso:
-                    sucesso_count += 1
-                    print(f"{posicao} ✓ Salvo! (Enun: {len(dados['enunciado'])}c | Gab: {len(dados['gabarito'])}c)")
+            try:
+                print(f"\n{posicao} Acessando: {titulo_curto}")
+                driver.get(questao['url'])
+                time.sleep(3)
+                
+                print(f"{posicao} Extraindo dados...")
+                dados = extrair_conteudo_discursiva(driver)
+                
+                if dados and isinstance(dados, dict) and "erro" not in dados:
+                    sucesso = database.salvar_discursiva(
+                        area=area_escolhida['nome'],
+                        exame=exame_escolhido['titulo'],
+                        titulo=questao['texto'],
+                        url=questao['url'],
+                        enunciado=dados['enunciado'],
+                        resposta_a=dados['resposta_a'],
+                        resposta_b=dados['resposta_b']
+                    )
+                    if sucesso:
+                        sucesso_count += 1
+                        print(f"{posicao} ✓ Salvo! (Enun: {len(dados['enunciado'])}c | A: {len(dados['resposta_a'])}c | B: {len(dados['resposta_b'])}c)")
+                    else:
+                        erro_count += 1
+                        print(f"{posicao} ✗ Erro ao salvar no banco.")
                 else:
                     erro_count += 1
-                    print(f"{posicao} ✗ Erro ao salvar no banco.")
-            else:
+                    print(f"{posicao} ✗ Conteúdo não encontrado.")
+            except Exception as e:
                 erro_count += 1
-                print(f"{posicao} ✗ Conteúdo não encontrado.")
+                print(f"{posicao} ✗ ERRO (pulando): {str(e)[:80]}")
+                continue
         
         # Resumo final
         print(f"\n{'='*70}")
@@ -375,3 +408,4 @@ def iniciar_robo():
 
 if __name__ == "__main__":
     iniciar_robo()
+

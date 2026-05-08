@@ -102,14 +102,14 @@ def organizar_por_exame(pecas, discursivas):
     for area, exame, enunciado, resposta, dist_pontos in pecas:
         chave = (area, exame)
         if chave not in exames:
-            exames[chave] = {"area": area, "exame": exame, "peca": None, "discursivas": []}
-        exames[chave]["peca"] = (enunciado, resposta, dist_pontos or "")
+            exames[chave] = {"area": area, "exame": exame, "pecas": [], "discursivas": []}
+        exames[chave]["pecas"].append((enunciado, resposta, dist_pontos or ""))
     
     # Indexar discursivas pela mesma chave
     for area, exame, enunciado, resp_a, resp_b, pont_a, pont_b, dist_pontos in discursivas:
         chave = (area, exame)
         if chave not in exames:
-            exames[chave] = {"area": area, "exame": exame, "peca": None, "discursivas": []}
+            exames[chave] = {"area": area, "exame": exame, "pecas": [], "discursivas": []}
         exames[chave]["discursivas"].append((enunciado, resp_a, resp_b, pont_a or "", pont_b or "", dist_pontos or ""))
     
     # Ordenar por area e exame
@@ -152,10 +152,9 @@ def criar_planilha_unificada(wb, blocos):
         ws.row_dimensions[row_idx].height = 25
         row_idx += 1
         
-        # --- Peca (se houver) ---
-        if bloco["peca"]:
-            enunciado, resposta, dist_pontos = bloco["peca"]
-            valores = [area, exame, "Peca Profissional", enunciado, resposta, "", "", "", "", dist_pontos]
+        # --- Pecas (todas) ---
+        for j, (enunciado, resposta, dist_pontos) in enumerate(bloco["pecas"]):
+            valores = [area, exame, f"Peca Profissional {j+1}" if len(bloco["pecas"]) > 1 else "Peca Profissional", enunciado, resposta, "", "", "", "", dist_pontos]
             peca_style = estilo_celula(tipo="peca")
             for col, valor in enumerate(valores, 1):
                 cell = ws.cell(row=row_idx, column=col, value=valor)

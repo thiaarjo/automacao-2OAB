@@ -159,7 +159,7 @@ def extrair_exames(driver):
         }
         
         if (lista && lista.tagName === 'UL') {
-            const links = Array.from(lista.querySelectorAll('a'));
+            const links = Array.from(lista.querySelectorAll(':scope > li > a'));
             const questoes = links.map(link => ({
                 texto: link.innerText.trim(),
                 url: link.href
@@ -353,6 +353,8 @@ def iniciar_robo():
     
     print(f"\n[AGUARDE] Abrindo navegador e acessando: {area_escolhida['nome']}...")
     
+    driver = None
+    
     chrome_options = Options()
     chrome_options.page_load_strategy = 'eager'
     chrome_options.add_argument("--start-maximized")
@@ -395,20 +397,25 @@ def iniciar_robo():
         
         # --- PASSO 2: Escolha do Exame ---
         titulo_menu_exames = f"EXAMES DISPONIVEIS - {area_escolhida['nome'].upper()}"
-        exame_escolhido = menu_selecao(exames_filtrados, titulo_menu_exames, "titulo")
+        exames_escolhidos = menu_fila(exames_filtrados, titulo_menu_exames, "titulo")
         
         limpar_terminal()
         
         # --- PASSO 3: Filtrar apenas DISCURSIVAS (SP) e montar fila ---
-        todas_questoes = exame_escolhido["questoes"]
-        apenas_sps = [q for q in todas_questoes if q['texto'].lower().startswith('sp')]
+        todas_questoes = []
+        for exame in exames_escolhidos:
+            for q in exame["questoes"]:
+                if q['texto'].lower().startswith('sp'):
+                    q['exame_titulo'] = exame['titulo']
+                    q['exibicao'] = f"[{exame['titulo'][:15]}...] {q['texto']}"
+                    todas_questoes.append(q)
         
-        if not apenas_sps:
-            print("\n[AVISO] Nenhuma questão discursiva (SP) encontrada neste exame.")
+        if not todas_questoes:
+            print("\n[AVISO] Nenhuma questão discursiva (SP) encontrada nestes exames.")
             return
         
-        titulo_menu_questoes = f"DISCURSIVAS DO {exame_escolhido['titulo']}"
-        fila_questoes = menu_fila(apenas_sps, titulo_menu_questoes, "texto")
+        titulo_menu_questoes = f"DISCURSIVAS DOS EXAMES SELECIONADOS"
+        fila_questoes = menu_fila(todas_questoes, titulo_menu_questoes, "exibicao")
         
         print(f"\n[FILA] {len(fila_questoes)} questão(ões) na fila de extração.")
         print(f"{'='*70}")
@@ -442,7 +449,7 @@ def iniciar_robo():
                     pont_b = dados.get('pontuacao_b', '')
                     sucesso = database.salvar_discursiva(
                         area=area_escolhida['nome'],
-                        exame=exame_escolhido['titulo'],
+                        exame=questao['exame_titulo'],
                         titulo=questao['texto'],
                         url=questao['url'],
                         enunciado=dados['enunciado'],
@@ -473,11 +480,17 @@ def iniciar_robo():
         print(f"  ✓ Salvas: {sucesso_count} | ⏭ Já existiam: {pular_count} | ✗ Erros: {erro_count}")
         print(f"{'='*70}")
         
+    except KeyboardInterrupt:
+        print(f"\n\n[CANCELADO] Automacao interrompida pelo usuario (Ctrl+C).")
     except Exception as e:
         print(f"\n[ERRO] Ocorreu um problema durante a automacao:\n{e}")
     finally:
         print("\n[FINALIZADO] Encerrando navegador...")
-        driver.quit()
+        try:
+            if driver:
+                driver.quit()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     iniciar_robo()

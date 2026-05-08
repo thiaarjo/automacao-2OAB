@@ -18,16 +18,19 @@ def conectar():
             enunciado TEXT,
             resposta_a TEXT,
             resposta_b TEXT,
+            pontuacao_a TEXT,
+            pontuacao_b TEXT,
             distribuicao_pontos TEXT,
             data_extracao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
-    # Migrar banco existente: adicionar coluna se nao existir
-    try:
-        cursor.execute("ALTER TABLE discursivas_fgv ADD COLUMN distribuicao_pontos TEXT")
-    except sqlite3.OperationalError:
-        pass  # Coluna ja existe
+    # Migrar banco existente: adicionar colunas se nao existirem
+    for coluna in ['distribuicao_pontos', 'pontuacao_a', 'pontuacao_b']:
+        try:
+            cursor.execute(f"ALTER TABLE discursivas_fgv ADD COLUMN {coluna} TEXT")
+        except sqlite3.OperationalError:
+            pass
     
     conn.commit()
     return conn
@@ -41,16 +44,16 @@ def ja_existe(url):
     conn.close()
     return resultado > 0
 
-def salvar_discursiva(area, exame, titulo, url, enunciado, resposta_a, resposta_b, distribuicao_pontos=""):
+def salvar_discursiva(area, exame, titulo, url, enunciado, resposta_a, resposta_b, pontuacao_a="", pontuacao_b="", distribuicao_pontos=""):
     """Salva os dados da questao discursiva no banco de dados."""
     try:
         conn = conectar()
         cursor = conn.cursor()
         
         cursor.execute("""
-            INSERT INTO discursivas_fgv (area_direito, exame_nome, titulo_questao, url_questao, enunciado, resposta_a, resposta_b, distribuicao_pontos)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (area, exame, titulo, url, enunciado, resposta_a, resposta_b, distribuicao_pontos))
+            INSERT INTO discursivas_fgv (area_direito, exame_nome, titulo_questao, url_questao, enunciado, resposta_a, resposta_b, pontuacao_a, pontuacao_b, distribuicao_pontos)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (area, exame, titulo, url, enunciado, resposta_a, resposta_b, pontuacao_a, pontuacao_b, distribuicao_pontos))
         
         conn.commit()
         conn.close()

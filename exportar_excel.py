@@ -79,7 +79,7 @@ def ler_discursivas():
     conn = sqlite3.connect(DB_DISCURSIVAS)
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT area_direito, exame_nome, enunciado, resposta_a, resposta_b, distribuicao_pontos
+        SELECT area_direito, exame_nome, enunciado, resposta_a, resposta_b, pontuacao_a, pontuacao_b, distribuicao_pontos
         FROM discursivas_fgv
         ORDER BY area_direito, exame_nome
     """)
@@ -106,11 +106,11 @@ def organizar_por_exame(pecas, discursivas):
         exames[chave]["peca"] = (enunciado, resposta, dist_pontos or "")
     
     # Indexar discursivas pela mesma chave
-    for area, exame, enunciado, resp_a, resp_b, dist_pontos in discursivas:
+    for area, exame, enunciado, resp_a, resp_b, pont_a, pont_b, dist_pontos in discursivas:
         chave = (area, exame)
         if chave not in exames:
             exames[chave] = {"area": area, "exame": exame, "peca": None, "discursivas": []}
-        exames[chave]["discursivas"].append((enunciado, resp_a, resp_b, dist_pontos or ""))
+        exames[chave]["discursivas"].append((enunciado, resp_a, resp_b, pont_a or "", pont_b or "", dist_pontos or ""))
     
     # Ordenar por area e exame
     ordenados = sorted(exames.values(), key=lambda x: (x["area"], x["exame"]))
@@ -124,8 +124,8 @@ def criar_planilha_unificada(wb, blocos):
     ws.title = "Prova OAB 2a Fase"
     
     # Cabecalhos
-    headers = ["Area", "Exame", "Tipo", "Enunciado", "Padrao de Resposta", "Resposta A", "Resposta B", "Distribuicao de Pontos"]
-    larguras = [22, 35, 20, 80, 70, 55, 55, 70]
+    headers = ["Area", "Exame", "Tipo", "Enunciado", "Padrao de Resposta", "Resposta A", "Resposta B", "Pontuacao A", "Pontuacao B", "Distribuicao de Pontos"]
+    larguras = [22, 35, 20, 80, 70, 55, 55, 18, 18, 70]
     
     header_style = estilo_header()
     for col, (header, largura) in enumerate(zip(headers, larguras), 1):
@@ -155,7 +155,7 @@ def criar_planilha_unificada(wb, blocos):
         # --- Peca (se houver) ---
         if bloco["peca"]:
             enunciado, resposta, dist_pontos = bloco["peca"]
-            valores = [area, exame, "Peca Profissional", enunciado, resposta, "", "", dist_pontos]
+            valores = [area, exame, "Peca Profissional", enunciado, resposta, "", "", "", "", dist_pontos]
             peca_style = estilo_celula(tipo="peca")
             for col, valor in enumerate(valores, 1):
                 cell = ws.cell(row=row_idx, column=col, value=valor)
@@ -164,10 +164,10 @@ def criar_planilha_unificada(wb, blocos):
             total_questoes += 1
         
         # --- Discursivas ---
-        for i, (enunciado, resp_a, resp_b, dist_pontos) in enumerate(bloco["discursivas"]):
+        for i, (enunciado, resp_a, resp_b, pont_a, pont_b, dist_pontos) in enumerate(bloco["discursivas"]):
             zebra = (i % 2 == 0)
             disc_style = estilo_celula(tipo="discursiva", zebra=zebra)
-            valores = [area, exame, f"Questao Discursiva {i+1}", enunciado, "", resp_a, resp_b, dist_pontos]
+            valores = [area, exame, f"Questao Discursiva {i+1}", enunciado, "", resp_a, resp_b, pont_a, pont_b, dist_pontos]
             for col, valor in enumerate(valores, 1):
                 cell = ws.cell(row=row_idx, column=col, value=valor or "")
                 aplicar_estilo(cell, disc_style)
@@ -179,7 +179,7 @@ def criar_planilha_unificada(wb, blocos):
     
     # Filtro automatico
     if total_questoes > 0:
-        ws.auto_filter.ref = f"A1:H{row_idx - 1}"
+        ws.auto_filter.ref = f"A1:J{row_idx - 1}"
     
     return total_questoes
 

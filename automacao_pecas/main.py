@@ -332,11 +332,26 @@ def iniciar_robo():
             print("\n[AVISO] Nenhum exame foi encontrado para esta área.")
             return
             
+        # Filtrar por tipo de gabarito
+        definitivos = [e for e in exames if e.get('tipo_gabarito') == 'definitivo']
+        preliminares = [e for e in exames if e.get('tipo_gabarito') == 'preliminar']
+        
+        print(f"\n[INFO] Encontrados: {len(definitivos)} definitivo(s) | {len(preliminares)} preliminar(es)")
+        
+        incluir_preliminar = input("=> Incluir exames com gabarito preliminar? (s/N): ").strip().lower()
+        
+        if incluir_preliminar == 's':
+            exames_filtrados = exames
+        else:
+            exames_filtrados = definitivos if definitivos else exames
+            if not definitivos:
+                print("[AVISO] Nenhum definitivo encontrado. Mostrando todos.")
+            
         limpar_terminal()
         
         # --- PASSO 2: Escolha do Exame ---
         titulo_menu_exames = f"EXAMES DISPONÍVEIS - {area_escolhida['nome'].upper()}"
-        exame_escolhido = menu_selecao(exames, titulo_menu_exames, "titulo")
+        exame_escolhido = menu_selecao(exames_filtrados, titulo_menu_exames, "titulo")
         
         limpar_terminal()
         

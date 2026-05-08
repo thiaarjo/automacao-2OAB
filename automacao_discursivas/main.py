@@ -300,6 +300,8 @@ def extrair_conteudo_discursiva(driver):
         
         // Extrair tabela de Distribuicao de Pontos (TableGrid)
         let dist_pontos = "";
+        let pontuacao_a = "";
+        let pontuacao_b = "";
         const tabela = contentDiv.querySelector("table.TableGrid");
         if (tabela) {
             const linhas = tabela.querySelectorAll("tr");
@@ -308,6 +310,18 @@ def extrair_conteudo_discursiva(driver):
                 const colunas = tr.querySelectorAll("td, th");
                 const textos = Array.from(colunas).map(td => td.innerText.trim());
                 partes.push(textos.join(" | "));
+                
+                // Extrair pontuacao por letra
+                if (colunas.length >= 2) {
+                    const itemText = colunas[0].innerText.trim();
+                    const pontoText = colunas[colunas.length - 1].innerText.trim();
+                    
+                    if (itemText.match(/^A[\\.\\)\\s]/)) {
+                        pontuacao_a = pontoText;
+                    } else if (itemText.match(/^B[\\.\\)\\s]/)) {
+                        pontuacao_b = pontoText;
+                    }
+                }
             }
             dist_pontos = partes.join('\\n');
         }
@@ -316,6 +330,8 @@ def extrair_conteudo_discursiva(driver):
             enunciado: limpar(enunciado_parts),
             resposta_a: resposta_a,
             resposta_b: resposta_b,
+            pontuacao_a: pontuacao_a,
+            pontuacao_b: pontuacao_b,
             distribuicao_pontos: dist_pontos
         };
     }
@@ -360,12 +376,27 @@ def iniciar_robo():
         if not exames:
             print("\n[AVISO] Nenhum exame foi encontrado para esta área.")
             return
+        
+        # Filtrar por tipo de gabarito
+        definitivos = [e for e in exames if e.get('tipo_gabarito') == 'definitivo']
+        preliminares = [e for e in exames if e.get('tipo_gabarito') == 'preliminar']
+        
+        print(f"\n[INFO] Encontrados: {len(definitivos)} definitivo(s) | {len(preliminares)} preliminar(es)")
+        
+        incluir_preliminar = input("=> Incluir exames com gabarito preliminar? (s/N): ").strip().lower()
+        
+        if incluir_preliminar == 's':
+            exames_filtrados = exames
+        else:
+            exames_filtrados = definitivos if definitivos else exames
+            if not definitivos:
+                print("[AVISO] Nenhum definitivo encontrado. Mostrando todos.")
             
         limpar_terminal()
         
         # --- PASSO 2: Escolha do Exame ---
-        titulo_menu_exames = f"EXAMES DISPONÍVEIS - {area_escolhida['nome'].upper()}"
-        exame_escolhido = menu_selecao(exames, titulo_menu_exames, "titulo")
+        titulo_menu_exames = f"EXAMES DISPONIVEIS - {area_escolhida['nome'].upper()}"
+        exame_escolhido = menu_selecao(exames_filtrados, titulo_menu_exames, "titulo")
         
         limpar_terminal()
         
@@ -408,6 +439,8 @@ def iniciar_robo():
                 
                 if dados and isinstance(dados, dict) and "erro" not in dados:
                     dist = dados.get('distribuicao_pontos', '')
+                    pont_a = dados.get('pontuacao_a', '')
+                    pont_b = dados.get('pontuacao_b', '')
                     sucesso = database.salvar_discursiva(
                         area=area_escolhida['nome'],
                         exame=exame_escolhido['titulo'],
@@ -416,12 +449,14 @@ def iniciar_robo():
                         enunciado=dados['enunciado'],
                         resposta_a=dados['resposta_a'],
                         resposta_b=dados['resposta_b'],
+                        pontuacao_a=pont_a,
+                        pontuacao_b=pont_b,
                         distribuicao_pontos=dist
                     )
                     if sucesso:
                         sucesso_count += 1
-                        dp_info = f" | Pontos: {len(dist)}c" if dist else ""
-                        print(f"{posicao} Salvo! (Enun: {len(dados['enunciado'])}c | A: {len(dados['resposta_a'])}c | B: {len(dados['resposta_b'])}c{dp_info})")
+                        pt_info = f" | Pt.A: {pont_a} | Pt.B: {pont_b}" if pont_a else ""
+                        print(f"{posicao} Salvo! (Enun: {len(dados['enunciado'])}c | A: {len(dados['resposta_a'])}c | B: {len(dados['resposta_b'])}c{pt_info})")
                     else:
                         erro_count += 1
                         print(f"{posicao} ✗ Erro ao salvar no banco.")

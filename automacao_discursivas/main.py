@@ -356,7 +356,6 @@ def iniciar_robo():
     chrome_options = Options()
     chrome_options.page_load_strategy = 'eager'
     chrome_options.add_argument("--start-maximized")
-    chrome_options.add_experimental_option("detach", True)
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     driver.set_page_load_timeout(30)  # Máximo 30s para carregar uma página
@@ -473,10 +472,12 @@ def iniciar_robo():
         print(f"  FILA CONCLUÍDA!")
         print(f"  ✓ Salvas: {sucesso_count} | ⏭ Já existiam: {pular_count} | ✗ Erros: {erro_count}")
         print(f"{'='*70}")
-        print("\n[FINALIZADO] O navegador permanecerá aberto.")
         
     except Exception as e:
-        print(f"\n[ERRO] Ocorreu um problema durante a automação:\n{e}")
+        print(f"\n[ERRO] Ocorreu um problema durante a automacao:\n{e}")
+    finally:
+        print("\n[FINALIZADO] Encerrando navegador...")
+        driver.quit()
 
 if __name__ == "__main__":
     iniciar_robo()

@@ -4,11 +4,10 @@ import os
 DB_NAME = "oab_discursivas.db"
 
 def conectar():
-    """Cria a conexão com o banco de dados e cria as tabelas se não existirem."""
+    """Cria a conexao com o banco de dados e cria as tabelas se nao existirem."""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Tabela para questões discursivas com respostas A e B separadas
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS discursivas_fgv (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,14 +18,22 @@ def conectar():
             enunciado TEXT,
             resposta_a TEXT,
             resposta_b TEXT,
+            distribuicao_pontos TEXT,
             data_extracao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    
+    # Migrar banco existente: adicionar coluna se nao existir
+    try:
+        cursor.execute("ALTER TABLE discursivas_fgv ADD COLUMN distribuicao_pontos TEXT")
+    except sqlite3.OperationalError:
+        pass  # Coluna ja existe
+    
     conn.commit()
     return conn
 
 def ja_existe(url):
-    """Verifica se uma questão com essa URL já foi salva no banco."""
+    """Verifica se uma questao com essa URL ja foi salva no banco."""
     conn = conectar()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM discursivas_fgv WHERE url_questao = ?", (url,))
@@ -34,16 +41,16 @@ def ja_existe(url):
     conn.close()
     return resultado > 0
 
-def salvar_discursiva(area, exame, titulo, url, enunciado, resposta_a, resposta_b):
-    """Salva os dados da questão discursiva no banco de dados."""
+def salvar_discursiva(area, exame, titulo, url, enunciado, resposta_a, resposta_b, distribuicao_pontos=""):
+    """Salva os dados da questao discursiva no banco de dados."""
     try:
         conn = conectar()
         cursor = conn.cursor()
         
         cursor.execute("""
-            INSERT INTO discursivas_fgv (area_direito, exame_nome, titulo_questao, url_questao, enunciado, resposta_a, resposta_b)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (area, exame, titulo, url, enunciado, resposta_a, resposta_b))
+            INSERT INTO discursivas_fgv (area_direito, exame_nome, titulo_questao, url_questao, enunciado, resposta_a, resposta_b, distribuicao_pontos)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (area, exame, titulo, url, enunciado, resposta_a, resposta_b, distribuicao_pontos))
         
         conn.commit()
         conn.close()
@@ -51,4 +58,3 @@ def salvar_discursiva(area, exame, titulo, url, enunciado, resposta_a, resposta_
     except Exception as e:
         print(f"Erro ao salvar no banco de dados: {e}")
         return False
-

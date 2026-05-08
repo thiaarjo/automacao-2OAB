@@ -134,16 +134,24 @@ def menu_fila(lista_opcoes, titulo_menu, chave_exibicao):
 # ==========================================
 def extrair_exames(driver):
     """
-    Varre a página usando JavaScript puro para velocidade extrema.
-    Retorna arrays agrupados por Exame.
+    Varre a pagina usando JavaScript puro para velocidade extrema.
+    Retorna arrays agrupados por Exame, incluindo tipo de gabarito.
     """
     script = """
     const exames_mapeados = [];
     const cabecalhos = document.querySelectorAll("#conteudo_total h3");
     
     for (const h3 of cabecalhos) {
-        let titulo = h3.innerText.split('\\n')[0].trim();
-        if (!titulo) continue;
+        let tituloCompleto = h3.innerText.split('\\n')[0].trim();
+        if (!tituloCompleto) continue;
+        
+        // Detectar tipo de gabarito
+        let tipo_gabarito = "desconhecido";
+        if (tituloCompleto.toLowerCase().includes("definitivo")) {
+            tipo_gabarito = "definitivo";
+        } else if (tituloCompleto.toLowerCase().includes("preliminar")) {
+            tipo_gabarito = "preliminar";
+        }
         
         let lista = h3.nextElementSibling;
         while(lista && lista.tagName !== 'UL' && lista.tagName !== 'H3') {
@@ -159,7 +167,8 @@ def extrair_exames(driver):
             
             if (questoes.length > 0) {
                 exames_mapeados.push({
-                    titulo: titulo,
+                    titulo: tituloCompleto,
+                    tipo_gabarito: tipo_gabarito,
                     questoes: questoes
                 });
             }
@@ -195,14 +204,24 @@ def extrair_conteudo_discursiva(driver):
             const tagName = el.tagName.toUpperCase();
             const text = el.innerText ? el.innerText.trim() : "";
             
-            // Marcadores de parada global
-            if (text.includes("Distribuição de Pontos") || 
-                text.includes("Voltar para lista") || 
+            // Marcadores de parada global (agora NAO para em Distribuicao)
+            if (text.includes("Voltar para lista") || 
+                text.includes("Questao Anterior") ||
                 text.includes("Questão Anterior") || 
+                text.includes("Proxima Questao") ||
                 text.includes("Próxima Questão") || 
+                text.includes("Achou esta pagina util") ||
                 text.includes("Achou esta página útil")) {
                 break;
             }
+            
+            // Pular a secao de Distribuicao (sera extraida separadamente)
+            if (text.includes("Distribuicao dos Pontos") || text.includes("Distribuição dos Pontos") || text.includes("Distribuição de Pontos")) {
+                continue;
+            }
+            
+            // Pular tabelas (TableGrid sera extraida separadamente)
+            if (tagName === 'TABLE') continue;
             
             // Filtrar textos lixo
             let isLixo = false;
@@ -279,10 +298,25 @@ def extrair_conteudo_discursiva(driver):
         resposta_a = resposta_a.replace(/^A\\)\\s*/, '').trim();
         resposta_b = resposta_b.replace(/^B\\)\\s*/, '').trim();
         
+        // Extrair tabela de Distribuicao de Pontos (TableGrid)
+        let dist_pontos = "";
+        const tabela = contentDiv.querySelector("table.TableGrid");
+        if (tabela) {
+            const linhas = tabela.querySelectorAll("tr");
+            const partes = [];
+            for (const tr of linhas) {
+                const colunas = tr.querySelectorAll("td, th");
+                const textos = Array.from(colunas).map(td => td.innerText.trim());
+                partes.push(textos.join(" | "));
+            }
+            dist_pontos = partes.join('\\n');
+        }
+        
         return {
             enunciado: limpar(enunciado_parts),
             resposta_a: resposta_a,
-            resposta_b: resposta_b
+            resposta_b: resposta_b,
+            distribuicao_pontos: dist_pontos
         };
     }
     return extrair(arguments[0]);
@@ -373,6 +407,7 @@ def iniciar_robo():
                 dados = extrair_conteudo_discursiva(driver)
                 
                 if dados and isinstance(dados, dict) and "erro" not in dados:
+                    dist = dados.get('distribuicao_pontos', '')
                     sucesso = database.salvar_discursiva(
                         area=area_escolhida['nome'],
                         exame=exame_escolhido['titulo'],
@@ -380,11 +415,13 @@ def iniciar_robo():
                         url=questao['url'],
                         enunciado=dados['enunciado'],
                         resposta_a=dados['resposta_a'],
-                        resposta_b=dados['resposta_b']
+                        resposta_b=dados['resposta_b'],
+                        distribuicao_pontos=dist
                     )
                     if sucesso:
                         sucesso_count += 1
-                        print(f"{posicao} ✓ Salvo! (Enun: {len(dados['enunciado'])}c | A: {len(dados['resposta_a'])}c | B: {len(dados['resposta_b'])}c)")
+                        dp_info = f" | Pontos: {len(dist)}c" if dist else ""
+                        print(f"{posicao} Salvo! (Enun: {len(dados['enunciado'])}c | A: {len(dados['resposta_a'])}c | B: {len(dados['resposta_b'])}c{dp_info})")
                     else:
                         erro_count += 1
                         print(f"{posicao} ✗ Erro ao salvar no banco.")

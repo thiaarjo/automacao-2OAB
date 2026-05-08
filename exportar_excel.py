@@ -1,12 +1,11 @@
 import sqlite3
 import os
 import sys
-from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
 # ==========================================
-# CONFIGURAÇÃO
+# CONFIGURACAO
 # ==========================================
 DB_PECAS = os.path.join("automacao_pecas", "oab_questoes.db")
 DB_DISCURSIVAS = os.path.join("automacao_discursivas", "oab_discursivas.db")
@@ -15,38 +14,43 @@ ARQUIVO_SAIDA = "questoes_oab_2fase.xlsx"
 # Cores do tema
 COR_HEADER = "1F2937"       # Cinza escuro
 COR_HEADER_FONT = "FFFFFF"  # Branco
-COR_AREA = "E0E7FF"         # Azul claro (separador de área)
+COR_SEPARADOR = "DBEAFE"    # Azul claro (separador de exame)
+COR_PECA = "FEF3C7"         # Amarelo claro (linha de peca)
 COR_ZEBRA_1 = "FFFFFF"      # Branco
 COR_ZEBRA_2 = "F8FAFC"      # Cinza bem claro
 
 # ==========================================
-# FUNÇÕES DE ESTILO
+# FUNCOES DE ESTILO
 # ==========================================
 def estilo_header():
-    """Retorna o estilo do cabeçalho."""
     return {
         "font": Font(name="Segoe UI", bold=True, color=COR_HEADER_FONT, size=11),
         "fill": PatternFill(start_color=COR_HEADER, end_color=COR_HEADER, fill_type="solid"),
         "alignment": Alignment(horizontal="center", vertical="center", wrap_text=True),
-        "border": Border(
-            bottom=Side(style="thin", color="4B5563")
-        )
+        "border": Border(bottom=Side(style="thin", color="4B5563"))
     }
 
-def estilo_celula(zebra=False):
-    """Retorna o estilo de uma célula de dados."""
-    fill_color = COR_ZEBRA_2 if zebra else COR_ZEBRA_1
+def estilo_separador():
+    return {
+        "font": Font(name="Segoe UI", bold=True, size=10, color="1E40AF"),
+        "fill": PatternFill(start_color=COR_SEPARADOR, end_color=COR_SEPARADOR, fill_type="solid"),
+        "alignment": Alignment(vertical="center"),
+        "border": Border(bottom=Side(style="thin", color="93C5FD"))
+    }
+
+def estilo_celula(tipo="discursiva", zebra=False):
+    if tipo == "peca":
+        fill_color = COR_PECA
+    else:
+        fill_color = COR_ZEBRA_2 if zebra else COR_ZEBRA_1
     return {
         "font": Font(name="Segoe UI", size=10),
         "fill": PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid"),
         "alignment": Alignment(vertical="top", wrap_text=True),
-        "border": Border(
-            bottom=Side(style="hair", color="E5E7EB")
-        )
+        "border": Border(bottom=Side(style="hair", color="E5E7EB"))
     }
 
 def aplicar_estilo(cell, estilo):
-    """Aplica um dicionário de estilos a uma célula."""
     for attr, value in estilo.items():
         setattr(cell, attr, value)
 
@@ -54,14 +58,13 @@ def aplicar_estilo(cell, estilo):
 # LEITURA DO BANCO DE DADOS
 # ==========================================
 def ler_pecas():
-    """Lê todas as peças do banco de dados."""
     if not os.path.exists(DB_PECAS):
-        print(f"[AVISO] Banco de peças não encontrado: {DB_PECAS}")
+        print(f"[AVISO] Banco de pecas nao encontrado: {DB_PECAS}")
         return []
     conn = sqlite3.connect(DB_PECAS)
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT area_direito, exame_nome, titulo_peca, enunciado, resposta_padrao, url_peca
+        SELECT area_direito, exame_nome, enunciado, resposta_padrao, distribuicao_pontos
         FROM pecas_fgv
         ORDER BY area_direito, exame_nome
     """)
@@ -70,14 +73,13 @@ def ler_pecas():
     return dados
 
 def ler_discursivas():
-    """Lê todas as discursivas do banco de dados."""
     if not os.path.exists(DB_DISCURSIVAS):
-        print(f"[AVISO] Banco de discursivas não encontrado: {DB_DISCURSIVAS}")
+        print(f"[AVISO] Banco de discursivas nao encontrado: {DB_DISCURSIVAS}")
         return []
     conn = sqlite3.connect(DB_DISCURSIVAS)
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT area_direito, exame_nome, titulo_questao, enunciado, resposta_a, resposta_b, url_questao
+        SELECT area_direito, exame_nome, enunciado, resposta_a, resposta_b, distribuicao_pontos
         FROM discursivas_fgv
         ORDER BY area_direito, exame_nome
     """)
@@ -86,52 +88,44 @@ def ler_discursivas():
     return dados
 
 # ==========================================
-# CRIAÇÃO DAS ABAS DO EXCEL
+# CASAR QUESTOES POR EXAME
 # ==========================================
-def criar_aba_pecas(wb, dados):
-    """Cria a aba de Peças Profissionais."""
-    ws = wb.active
-    ws.title = "Peças Profissionais"
+def organizar_por_exame(pecas, discursivas):
+    """
+    Agrupa pecas e discursivas pelo exame (area + exame_nome).
+    Retorna uma lista ordenada de blocos, cada um com:
+      { "area": ..., "exame": ..., "peca": ..., "discursivas": [...] }
+    """
+    exames = {}
     
-    # Cabeçalhos
-    headers = ["Área", "Exame", "Enunciado", "Padrão de Resposta FGV"]
-    larguras = [22, 40, 80, 80]
+    # Indexar pecas por chave (area + exame)
+    for area, exame, enunciado, resposta, dist_pontos in pecas:
+        chave = (area, exame)
+        if chave not in exames:
+            exames[chave] = {"area": area, "exame": exame, "peca": None, "discursivas": []}
+        exames[chave]["peca"] = (enunciado, resposta, dist_pontos or "")
     
-    header_style = estilo_header()
-    for col, (header, largura) in enumerate(zip(headers, larguras), 1):
-        cell = ws.cell(row=1, column=col, value=header)
-        aplicar_estilo(cell, header_style)
-        ws.column_dimensions[cell.column_letter].width = largura
+    # Indexar discursivas pela mesma chave
+    for area, exame, enunciado, resp_a, resp_b, dist_pontos in discursivas:
+        chave = (area, exame)
+        if chave not in exames:
+            exames[chave] = {"area": area, "exame": exame, "peca": None, "discursivas": []}
+        exames[chave]["discursivas"].append((enunciado, resp_a, resp_b, dist_pontos or ""))
     
-    # Altura do cabeçalho
-    ws.row_dimensions[1].height = 30
-    
-    # Dados
-    for row_idx, (area, exame, titulo, enunciado, resposta, url) in enumerate(dados, 2):
-        zebra = (row_idx % 2 == 0)
-        celula_style = estilo_celula(zebra)
-        
-        valores = [area, exame, enunciado, resposta]
-        for col, valor in enumerate(valores, 1):
-            cell = ws.cell(row=row_idx, column=col, value=valor or "")
-            aplicar_estilo(cell, celula_style)
-    
-    # Congelar cabeçalho
-    ws.freeze_panes = "A2"
-    
-    # Filtro automático
-    if dados:
-        ws.auto_filter.ref = f"A1:D{len(dados) + 1}"
-    
-    return len(dados)
+    # Ordenar por area e exame
+    ordenados = sorted(exames.values(), key=lambda x: (x["area"], x["exame"]))
+    return ordenados
 
-def criar_aba_discursivas(wb, dados):
-    """Cria a aba de Questões Discursivas."""
-    ws = wb.create_sheet("Questões Discursivas")
+# ==========================================
+# CRIACAO DA PLANILHA UNIFICADA
+# ==========================================
+def criar_planilha_unificada(wb, blocos):
+    ws = wb.active
+    ws.title = "Prova OAB 2a Fase"
     
-    # Cabeçalhos
-    headers = ["Área", "Exame", "Título", "Enunciado", "Resposta A", "Resposta B", "URL"]
-    larguras = [22, 40, 50, 80, 60, 60, 45]
+    # Cabecalhos
+    headers = ["Area", "Exame", "Tipo", "Enunciado", "Padrao de Resposta", "Resposta A", "Resposta B", "Distribuicao de Pontos"]
+    larguras = [22, 35, 20, 80, 70, 55, 55, 70]
     
     header_style = estilo_header()
     for col, (header, largura) in enumerate(zip(headers, larguras), 1):
@@ -141,59 +135,89 @@ def criar_aba_discursivas(wb, dados):
     
     ws.row_dimensions[1].height = 30
     
-    # Dados
-    for row_idx, (area, exame, titulo, enunciado, resp_a, resp_b, url) in enumerate(dados, 2):
-        zebra = (row_idx % 2 == 0)
-        celula_style = estilo_celula(zebra)
-        
-        valores = [area, exame, titulo, enunciado, resp_a, resp_b, url]
-        for col, valor in enumerate(valores, 1):
-            cell = ws.cell(row=row_idx, column=col, value=valor or "")
-            aplicar_estilo(cell, celula_style)
+    row_idx = 2
+    total_questoes = 0
     
+    for bloco in blocos:
+        area = bloco["area"]
+        exame = bloco["exame"]
+        
+        # --- Linha separadora do exame ---
+        sep_style = estilo_separador()
+        sep_text = f"{area} - {exame}"
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=row_idx, column=col, value=sep_text if col == 1 else "")
+            aplicar_estilo(cell, sep_style)
+        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=len(headers))
+        ws.row_dimensions[row_idx].height = 25
+        row_idx += 1
+        
+        # --- Peca (se houver) ---
+        if bloco["peca"]:
+            enunciado, resposta, dist_pontos = bloco["peca"]
+            valores = [area, exame, "Peca Profissional", enunciado, resposta, "", "", dist_pontos]
+            peca_style = estilo_celula(tipo="peca")
+            for col, valor in enumerate(valores, 1):
+                cell = ws.cell(row=row_idx, column=col, value=valor)
+                aplicar_estilo(cell, peca_style)
+            row_idx += 1
+            total_questoes += 1
+        
+        # --- Discursivas ---
+        for i, (enunciado, resp_a, resp_b, dist_pontos) in enumerate(bloco["discursivas"]):
+            zebra = (i % 2 == 0)
+            disc_style = estilo_celula(tipo="discursiva", zebra=zebra)
+            valores = [area, exame, f"Questao Discursiva {i+1}", enunciado, "", resp_a, resp_b, dist_pontos]
+            for col, valor in enumerate(valores, 1):
+                cell = ws.cell(row=row_idx, column=col, value=valor or "")
+                aplicar_estilo(cell, disc_style)
+            row_idx += 1
+            total_questoes += 1
+    
+    # Congelar cabecalho
     ws.freeze_panes = "A2"
     
-    if dados:
-        ws.auto_filter.ref = f"A1:G{len(dados) + 1}"
+    # Filtro automatico
+    if total_questoes > 0:
+        ws.auto_filter.ref = f"A1:H{row_idx - 1}"
     
-    return len(dados)
+    return total_questoes
 
 # ==========================================
 # FLUXO PRINCIPAL
 # ==========================================
 def exportar():
     print(f"\n{'='*60}")
-    print(f"  EXPORTADOR OAB 2a FASE -> EXCEL")
+    print(f"  EXPORTADOR OAB 2a FASE -> EXCEL (UNIFICADO)")
     print(f"{'='*60}")
     
     wb = Workbook()
     
-    # Ler dados
-    print("\n[1/4] Lendo banco de peças...")
+    print("\n[1/4] Lendo banco de pecas...")
     pecas = ler_pecas()
-    print(f"      -> {len(pecas)} peça(s) encontrada(s).")
+    print(f"      -> {len(pecas)} peca(s) encontrada(s).")
     
     print("[2/4] Lendo banco de discursivas...")
     discursivas = ler_discursivas()
     print(f"      -> {len(discursivas)} discursiva(s) encontrada(s).")
     
     if not pecas and not discursivas:
-        print("\n[AVISO] Nenhum dado encontrado nos bancos. Execute os robôs primeiro!")
+        print("\n[AVISO] Nenhum dado encontrado nos bancos. Execute os robos primeiro!")
         return
     
-    # Criar abas
-    print("[3/4] Montando planilha...")
-    total_pecas = criar_aba_pecas(wb, pecas)
-    total_disc = criar_aba_discursivas(wb, discursivas)
+    print("[3/4] Organizando por exame e montando planilha...")
+    blocos = organizar_por_exame(pecas, discursivas)
+    print(f"      -> {len(blocos)} exame(s) identificado(s).")
     
-    # Salvar
+    total = criar_planilha_unificada(wb, blocos)
+    
     print(f"[4/4] Salvando '{ARQUIVO_SAIDA}'...")
     wb.save(ARQUIVO_SAIDA)
     
     print(f"\n{'='*60}")
     print(f"  [OK] EXPORTACAO CONCLUIDA!")
     print(f"  Arquivo: {os.path.abspath(ARQUIVO_SAIDA)}")
-    print(f"  Peças: {total_pecas} | Discursivas: {total_disc}")
+    print(f"  Exames: {len(blocos)} | Questoes: {total}")
     print(f"{'='*60}\n")
 
 if __name__ == "__main__":

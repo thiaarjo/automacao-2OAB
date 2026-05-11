@@ -309,13 +309,32 @@ def iniciar_robo():
     # --- PASSO 1: Escolha da Área ---
     area_escolhida = menu_selecao(FLUXOS_AUTOMACAO, "ROBÔ OAB [PEÇAS] - SELECIONE A ÁREA DO DIREITO", "nome")
     
-    print(f"\n[AGUARDE] Abrindo navegador e acessando: {area_escolhida['nome']}...")
+    # --- PASSO 1.5: Modo de Execução ---
+    limpar_terminal()
+    print(f"\n{'='*70}")
+    print("  MODO DE EXECUÇÃO")
+    print(f"{'='*70}")
+    print("[1] Background (Invisível - recomendado, não atrapalha)")
+    print("[2] Normal (Com tela - mostra o navegador abrindo)")
+    modo_escolhido = input("\n=> Escolha o modo (1 ou 2, padrão 1): ").strip()
+    
+    modo_headless = modo_escolhido != "2"
+    modo_texto = "Background (Invisível)" if modo_headless else "Normal (Com tela)"
+    
+    print(f"\n[AGUARDE] Abrindo navegador ({modo_texto}) e acessando: {area_escolhida['nome']}...")
     
     driver = None
     
     chrome_options = Options()
     chrome_options.page_load_strategy = 'eager'
     chrome_options.add_argument("--start-maximized")
+    if modo_headless:
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-extensions")
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
@@ -436,6 +455,19 @@ def iniciar_robo():
                 driver.quit()
         except Exception:
             pass
+            
+        print("\n[EXCEL] Exportando dados para planilha unificada...")
+        try:
+            import subprocess
+            import os
+            import sys
+            
+            # Executa o script exportar_excel.py a partir da pasta raiz
+            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            script_excel = os.path.join(root_dir, "exportar_excel.py")
+            subprocess.run([sys.executable, script_excel], cwd=root_dir)
+        except Exception as e:
+            print(f"[ERRO] Falha ao executar a exportacao automatica: {e}")
 
 if __name__ == "__main__":
     iniciar_robo()

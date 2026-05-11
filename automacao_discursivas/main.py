@@ -424,7 +424,8 @@ def iniciar_robo():
         todas_questoes = []
         for exame in exames_escolhidos:
             for q in exame["questoes"]:
-                if q['texto'].lower().startswith('sp'):
+                texto_lower = q['texto'].lower()
+                if texto_lower.startswith('sp') or texto_lower.startswith('questao') or texto_lower.startswith('questão'):
                     q['exame_titulo'] = exame['titulo']
                     q['exibicao'] = f"[{exame['titulo'][:15]}...] {q['texto']}"
                     todas_questoes.append(q)
